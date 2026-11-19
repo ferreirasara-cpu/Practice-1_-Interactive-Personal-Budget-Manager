@@ -6,7 +6,8 @@ The program always works on its own file (`data/transactions.csv`) and only
 reads the sample file, never writes to it. I decided this because saving
 writes only the valid transactions: if the program saved into the sample
 file, its invalid rows would disappear without any warning, which is exactly
-the kind of silent change the brief says to avoid. For the same reason, every
+the kind of silent change the brief says to avoid. The program even refuses
+to start with `--file data/sample_transactions.csv`. For the same reason, every
 change (add, import, undo) is saved immediately and the whole file is
 rewritten, so the file on disk always matches what the program shows. This
 is also what makes undo safe: undo is not just removing an item from a list
@@ -20,6 +21,7 @@ touches the disk. The dashed arrow to the sample file is the decision above:
 the program reads it, but never writes to it.
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "arial", "lineColor": "#1464A5", "primaryTextColor": "#072146"}}}%%
 flowchart TD
     U([User]) -->|chooses a menu option| CLI["cli.py<br/>menu, input and print"]
     CLI -->|checks each answer while typing| VAL["validation.py<br/>rules and categories"]
@@ -33,6 +35,19 @@ flowchart TD
     TEST["tests/test_core.py"] -.->|tests directly, without the menu| SRV
     TEST -.-> STO
     TEST -.-> VAL
+
+    classDef user fill:#2DCCCD,stroke:#072146,color:#072146
+    classDef cli fill:#072146,stroke:#072146,color:#FFFFFF
+    classDef logic fill:#004481,stroke:#072146,color:#FFFFFF
+    classDef storage fill:#1973B8,stroke:#072146,color:#FFFFFF
+    classDef data fill:#D4EDFC,stroke:#1464A5,color:#072146
+    classDef test fill:#FFFFFF,stroke:#1973B8,color:#072146,stroke-dasharray:4 3
+    class U user
+    class CLI cli
+    class SRV,MOD,VAL logic
+    class STO storage
+    class DATA,LIM,SAMPLE data
+    class TEST test
 ```
 
 ## Example: adding a transaction
@@ -43,7 +58,9 @@ answer right away, and again when the Transaction is created, so nothing
 shows the file being rewritten after every change.
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "arial", "actorBkg": "#004481", "actorBorder": "#072146", "actorTextColor": "#FFFFFF", "actorLineColor": "#5BBEFF", "signalColor": "#1464A5", "signalTextColor": "#072146", "sequenceNumberColor": "#FFFFFF"}}}%%
 sequenceDiagram
+    autonumber
     actor U as User
     participant C as cli.py
     participant V as validation.py
@@ -90,7 +107,11 @@ sequenceDiagram
 - **Which boundary changed my design?** The amount `nan`. Python's
   `float("nan")` is accepted, and `nan <= 0` is `False`, so the first version
   of the check let it through. I changed the rule to `not amount > 0` and
-  added a maximum (1,000,000) that also rejects `inf`.
+  added a maximum (1,000,000) that also rejects `inf`. Later, adversarial
+  testing showed that `float()` also accepts `1e3`, `1_000` and digits of
+  other alphabets, so now an amount must first match the pattern of a plain
+  number (`re.fullmatch`), and a decimal comma like `18,50` gets its own
+  message instead of being guessed.
 - **What would I refactor next?** Categories are written in the code, so
   adding one means editing `validation.py`. I would load them from a JSON
   file, like the limits already are, so they can change without touching the

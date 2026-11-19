@@ -31,7 +31,7 @@ Tools used:
 - assert with exact expected values (manual 3.3).
 - lambda to delay a call until error_message() runs it (manual 6.3).
 - try / except / return to capture an error message (manual 3.2).
-- pathlib: .unlink(), .exists(), .read_text(), .write_text() (manual 7.2).
+- pathlib: .read_text(), .write_text() (manual 7.2).
 - A list of functions run in a for loop (functions are values, manual 4.3).
 """
 
@@ -39,7 +39,7 @@ from pathlib import Path
 
 from budget_manager.models import Transaction
 from budget_manager.services import Budget
-from budget_manager.storage import load_transactions, save_transactions
+from budget_manager.storage import load_transactions, save_limits, save_transactions
 from budget_manager.validation import (
     validate_amount,
     validate_any_category,
@@ -52,10 +52,13 @@ from budget_manager.validation import (
 
 SAMPLE_FILE = Path("data/sample_transactions.csv")
 
-# A temporary file only for the tests. It is deleted before and after each
+# A temporary file only for the tests. It is emptied before and after each
 # test, so tests never touch the real data/transactions.csv.
 TEST_FILE = Path("tests/tmp_test_transactions.csv")
 TEST_LIMITS = Path("tests/tmp_test_limits.json")
+
+# A file that is never created, to check what happens the first time.
+MISSING_FILE = Path("tests/this_file_is_never_created.csv")
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +66,11 @@ TEST_LIMITS = Path("tests/tmp_test_limits.json")
 # ---------------------------------------------------------------------------
 
 def error_message(action) -> str:
-    """Run action (a lambda) and return its ValueError message, failing if it succeeds."""
+    """Run action (a lambda) and return its ValueError message, failing if it succeeds.
+
+    (action has no type hint: describing "a function" as a type needs a tool
+    we did not see in class.)
+    """
     try:
         action()
     except ValueError as error:
@@ -72,9 +79,11 @@ def error_message(action) -> str:
 
 
 def clean_test_file() -> None:
-    # missing_ok=True: no error if the file does not exist.
-    TEST_FILE.unlink(missing_ok=True)
-    TEST_LIMITS.unlink(missing_ok=True)
+    """Empty the temporary test files, so every test starts from zero."""
+    # Saving an empty list / dictionary rewrites each file from zero ("w" mode),
+    # so nothing from a previous test is left inside.
+    save_transactions(TEST_FILE, [])
+    save_limits(TEST_LIMITS, {})
 
 
 def new_budget() -> Budget:
@@ -124,14 +133,21 @@ def test_amount_boundaries() -> None:
     )
 
     # Values that float() accepts but are not real amounts.
-    # This boundary changed the design: "nan" passed the first version.
-    assert error_message(lambda: validate_amount("nan")) == "amount must be > 0, got nan"
-    assert error_message(lambda: validate_amount("inf")) == (
-        "amount must be at most 1000000, got inf"
+    # These boundaries changed the design: "nan" passed the first version,
+    # and float() also accepts "1e3", "1_000" and digits of other alphabets.
+    for text in ["nan", "inf", "1e3", "1_000", "+5", "١٢"]:
+        assert error_message(lambda: validate_amount(text)) == (
+            f"amount must be a number like 18.50, got '{text}'"
+        )
+
+    # A Spanish decimal comma: rejected with a message that says what to type,
+    # never changed into a dot ("1,500" could mean 1.5 or 1500).
+    assert error_message(lambda: validate_amount("18,50")) == (
+        "amount must use a dot for decimals and no commas, like 18.50, got '18,50'"
     )
 
     # Not a number and empty.
-    assert error_message(lambda: validate_amount("abc")) == "amount must be a number, got 'abc'"
+    assert error_message(lambda: validate_amount("abc")) == "amount must be a number like 18.50, got 'abc'"
     assert error_message(lambda: validate_amount("   ")) == "amount is required"
 
 
@@ -182,6 +198,7 @@ def test_load_sample_file() -> None:
 
     # Each rejected message has the row number and the reason.
     assert rejected[0] == "Row 6: amount must be > 0, got -5"
+    assert "Row 14: currency must be one of EUR, GBP, USD, got 'JPY'" in rejected
     assert "Row 15: id T003 is repeated" in rejected
     assert "Row 16: subcategory is required" in rejected
 
@@ -191,8 +208,8 @@ def test_load_sample_file() -> None:
 
 
 def test_missing_working_file_starts_empty() -> None:
-    clean_test_file()
-    accepted, rejected = load_transactions(TEST_FILE)
+    assert not MISSING_FILE.exists()
+    accepted, rejected = load_transactions(MISSING_FILE)
     assert accepted == []
     assert rejected == []
 
@@ -237,6 +254,8 @@ def test_report_totals() -> None:
 
     # Biggest category first.
     assert budget.totals_by_category("EUR") == {"home": 650.0, "food": 43.4, "leisure": 35.0}
+    # Share of the 728.40 of expenses: 650 / 728.40 * 100 = 89.2%, and so on.
+    assert budget.category_shares("EUR") == {"home": 89.2, "food": 6.0, "leisure": 4.8}
 
     # Filters.
     assert [t.id for t in budget.filter(kind="income")] == ["T001", "T005"]
@@ -291,9 +310,9 @@ def test_failed_add_changes_nothing() -> None:
         lambda: budget.add("2026-09-10", "expense", "food", "supermarket", "-1", "EUR")
     )
     assert message == "amount must be > 0, got -1"
-    # Nothing was added and no file was created.
+    # Nothing was added, in memory or in the file.
     assert budget.transactions == []
-    assert not TEST_FILE.exists()
+    assert load_transactions(TEST_FILE) == ([], [])
 
 
 def test_transactions_cannot_be_changed_from_outside() -> None:
@@ -320,13 +339,43 @@ def test_import_missing_file() -> None:
     assert error_message(lambda: budget.import_file("data")) == "file 'data' was not found"
 
 
-def test_ids_stop_at_T999() -> None:
+def test_importing_twice_does_not_count_twice() -> None:
     budget = new_budget()
+    budget.import_file(SAMPLE_FILE)
+    added, rejected = budget.import_file(SAMPLE_FILE)
+
+    # Second import: nothing new, and the 6 repeated rows are reported
+    # (plus the same 11 invalid rows as the first time).
+    assert added == []
+    assert len(rejected) == 11 + 6
+    assert "id T001 (2026-09-01, salary, 1500.00 EUR): already in your budget, not imported again" in rejected
+    # The totals did not double: still the numbers calculated by hand.
+    assert budget.summary("EUR")["expenses"] == 728.4
+    clean_test_file()
+
+
+def test_semicolon_file_gives_one_clear_error() -> None:
+    clean_test_file()
+    # A CSV exported from Spanish Excel uses ";" instead of ",".
+    TEST_FILE.write_text(
+        "id;date;kind;category;subcategory;amount;currency\n"
+        "T001;2026-09-01;income;salary;payroll;1500.00;EUR\n",
+        encoding="utf-8",
+    )
+    message = error_message(lambda: load_transactions(TEST_FILE))
+    assert message.startswith(f"file '{TEST_FILE}' has no column(s) id, date")
+    clean_test_file()
+
+
+def test_ids_stop_at_T999() -> None:
+    clean_test_file()
     # Boundary: T999 is the last id. Instead of adding 998 transactions, we
-    # add one and change its id to T998 (only in memory, for the test).
+    # save a file whose only transaction is T998 and open it.
     # The next one gets T999 (accepted), and one more must fail.
-    budget.add("2026-09-01", "expense", "food", "general", "1", "EUR")
-    budget._transactions[0].id = "T998"
+    save_transactions(
+        TEST_FILE, [Transaction("T998", "2026-09-01", "expense", "food", "general", "1", "EUR")]
+    )
+    budget = Budget(TEST_FILE, TEST_LIMITS)
     assert budget.add("2026-09-01", "expense", "food", "general", "1", "EUR").id == "T999"
 
     assert error_message(
@@ -360,6 +409,10 @@ def test_month_rules() -> None:
     assert error_message(lambda: validate_month("2026-13")) == "month '2026-13' does not exist"
     assert error_message(lambda: validate_month("2026-00")) == "month '2026-00' does not exist"
     assert error_message(lambda: validate_month("09/2026")) == "month must be YYYY-MM, got '09/2026'"
+    # Full-width digits look like numbers but would never match a date.
+    assert error_message(lambda: validate_month("２０２６-０９")) == (
+        "month must be YYYY-MM, got '２０２６-０９'"
+    )
 
 
 def test_monthly_report() -> None:
@@ -473,6 +526,8 @@ if __name__ == "__main__":
         test_failed_add_changes_nothing,
         test_transactions_cannot_be_changed_from_outside,
         test_import_missing_file,
+        test_importing_twice_does_not_count_twice,
+        test_semicolon_file_gives_one_clear_error,
         test_ids_stop_at_T999,
         test_import_never_changes_sample_file,
         test_month_rules,

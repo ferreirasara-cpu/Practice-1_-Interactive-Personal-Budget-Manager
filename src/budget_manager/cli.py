@@ -21,7 +21,8 @@ Tools used:
 - A dictionary that maps menu options to functions, instead of a long
   if / elif chain (manual 4.3: functions can be stored in a dict).
 - lambda to adapt a validator that needs extra arguments (manual 6.3).
-- f-string alignment and widths (:<10, :>12, :,.2f) and .center() (manual 8.2).
+- f-string alignment and widths (:<10, :>12, :,.2f) and .center() for titles
+  (manual 8.2; .center() itself is a display extra, see AI_DISCLOSURE.md).
 - String repetition ("─" * 60) to draw lines and bars.
 - argparse for the --file option (manual 9.3).
 - if __name__ == "__main__": so importing the file does not start the menu.
@@ -104,10 +105,12 @@ def section(text: str) -> None:
 
 
 def success(text: str) -> None:
+    """Print a message that went well, with a ✔."""
     print(f"  ✔ {text}")
 
 
 def error(text: str) -> None:
+    """Print a problem, with a ✖."""
     print(f"  ✖ {text}")
 
 
@@ -173,7 +176,10 @@ def ask_until_valid(prompt: str, check) -> object:
 
 
 def optional(check):
-    """Wrap a validator so that an empty answer means 'skip' (returns None)."""
+    """Wrap a validator so that an empty answer means 'skip' (returns None).
+
+    (No type hints here, for the same reason as in ask_until_valid.)
+    """
     # This function RETURNS a new function (a lambda). Functions are values
     # in Python: they can be stored, passed and returned (manual 4.3).
     return lambda text: None if text.strip() == "" else check(text)
@@ -184,6 +190,7 @@ def optional(check):
 # ---------------------------------------------------------------------------
 
 def add_transaction(budget: Budget) -> None:
+    """Menu option 1: ask for each field (again until valid), then save it."""
     section("New transaction")
 
     # Each field is checked as soon as it is typed, so the user can fix it
@@ -222,11 +229,13 @@ def add_transaction(budget: Budget) -> None:
 
 
 def list_transactions(budget: Budget) -> None:
+    """Menu option 2: show every transaction, sorted by date."""
     section("All transactions (by date)")
     show_table(budget.list_by_date())
 
 
 def filter_transactions(budget: Budget) -> None:
+    """Menu option 3: show only the transactions of a kind, category and/or month."""
     section("Filter transactions")
     print("    Press Enter to skip a filter.")
 
@@ -250,6 +259,7 @@ def filter_transactions(budget: Budget) -> None:
 
 
 def show_report(budget: Budget) -> None:
+    """Menu option 4: totals per currency, expenses by category, and limits for one month."""
     section("Report")
     currencies = budget.currencies()
     if not currencies:
@@ -280,12 +290,13 @@ def show_report(budget: Budget) -> None:
         print(f"  {'Balance':<12}{summary['balance']:>14,.2f}")
 
         totals = budget.totals_by_category(currency, month)
+        # The percentages are calculated in services.py: the CLI only shows them.
+        shares = budget.category_shares(currency, month)
         if totals:
             print()
             print("  Expenses by category")
             for category, total in totals.items():
-                # Share of all expenses in this currency, as a percentage.
-                share = total / summary["expenses"] * 100
+                share = shares[category]
                 print(f"  {category:<12}{total:>12,.2f}  {bar(share)} {share:>3.0f}%")
 
     if not shown:
@@ -313,6 +324,7 @@ def show_limits(budget: Budget, month: str) -> None:
 
 
 def manage_limits(budget: Budget) -> None:
+    """Menu option 5: show the limits, then set, change or remove one."""
     section("Monthly spending limits (EUR)")
 
     # Show the current limits first.
@@ -342,6 +354,7 @@ def manage_limits(budget: Budget) -> None:
 
 
 def import_transactions(budget: Budget) -> None:
+    """Menu option 6: import another CSV file and report every rejected row."""
     section("Import a CSV file")
     path = input(f"  File (Enter for {SAMPLE_FILE}): ").strip() or SAMPLE_FILE
     try:
@@ -361,6 +374,7 @@ def import_transactions(budget: Budget) -> None:
 
 
 def undo_last(budget: Budget) -> None:
+    """Menu option 7: show the last transaction added and remove it if the user confirms."""
     section("Undo last transaction")
 
     # last_transaction is a property of Budget, so the menu does not need to
@@ -389,6 +403,7 @@ def undo_last(budget: Budget) -> None:
 # ---------------------------------------------------------------------------
 
 def show_menu(budget: Budget) -> None:
+    """Print the title, the open file and the menu options."""
     title("Personal Budget Manager")
     # A status line so the user always knows which file is open.
     print(f"  File: {budget.path}   ·   {len(budget.transactions)} transaction(s)")
@@ -400,6 +415,7 @@ def show_menu(budget: Budget) -> None:
 
 
 def main() -> None:
+    """Start the program: read --file, load the budget and run the menu loop."""
     # argparse reads options written after the command (manual 9.3),
     # for example: uv run budget --file data/test.csv
     parser = argparse.ArgumentParser(description="Personal budget manager")
@@ -410,13 +426,19 @@ def main() -> None:
 
     # Key design decision (DESIGN.md): the sample file is never written.
     # Working on it would save only its valid rows and silently delete the
-    # invalid ones, so we refuse it. .resolve() gives the full path, so
+    # invalid ones, so we refuse it. Comparing Path objects (not text) means
     # "data/sample_transactions.csv" and "./data/sample_transactions.csv" match.
-    # parser.error() prints the message and stops the program.
-    if Path(args.file).resolve() == Path(SAMPLE_FILE).resolve():
-        parser.error(f"{SAMPLE_FILE} is only for importing (option 6), use another file")
+    if Path(args.file) == Path(SAMPLE_FILE):
+        error(f"{SAMPLE_FILE} is only for importing (option 6). Use another file.")
+        return
 
-    budget = Budget(args.file)
+    # A file that cannot be read at all (for example separated by ";") stops
+    # the program with a clear message instead of a crash (manual 3.2).
+    try:
+        budget = Budget(args.file)
+    except ValueError as problem:
+        error(str(problem))
+        return
 
     # If the working file has bad rows (for example, edited by hand), warn the user.
     if budget.rejected:

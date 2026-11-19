@@ -1,11 +1,83 @@
-# Personal Budget Manager
+<div align="center">
+
+# 💶 Personal Budget Manager
+
+**Release 1 · Practice 1 · Python I**
+
+![Python](https://img.shields.io/badge/Python-3.12%2B-004481?style=for-the-badge&logo=python&logoColor=white)
+![uv](https://img.shields.io/badge/run_with-uv-1464A5?style=for-the-badge)
+![Tests](https://img.shields.io/badge/tests-22_passing-2DCCCD?style=for-the-badge)
+![Dependencies](https://img.shields.io/badge/dependencies-none-072146?style=for-the-badge)
 
 A command line program to record my income and expenses, save them to a CSV
 file, see monthly reports by category, and set monthly spending limits.
 Categories and limits are inspired by the BBVA app ("Mi día a día" and
 "Mis presupuestos").
 
-How the files work together and why: see [DESIGN.md](DESIGN.md).
+</div>
+
+> [!TIP]
+> **Try it in one minute:** `uv sync` → `uv run budget` → choose **6** and press
+> Enter twice to import the sample file → choose **4** for the report.
+> Tests: `uv run python tests/test_core.py`
+
+## Brief checklist
+
+Where each part of the brief can be found:
+
+| The brief asks for | Where it is |
+|---|---|
+| Add, list and report transactions | Menu options 1, 2, 3 and 4 · [Example](#example) |
+| Save and load from file | `storage.py`, saved after every change · [DESIGN.md](DESIGN.md) |
+| Validate inputs at entry points | `validation.py` · [Acceptance criteria](#acceptance-criteria) (AC1 to AC31) |
+| Transaction schema with predictable fields | [Transaction schema](#transaction-schema) |
+| Separated layers (CLI, service, storage) | `cli.py`, `services.py`, `storage.py` · [How it works](#how-it-works) |
+| Normal, boundary, malformed and round-trip tests | `tests/test_core.py` · [How to test](#how-to-test) |
+| Sample data with valid and invalid rows | `data/sample_transactions.csv` (6 valid, 11 invalid) |
+| Design rationale | [DESIGN.md](DESIGN.md), first paragraph |
+| AI disclosure | [AI_DISCLOSURE.md](AI_DISCLOSURE.md) |
+| Stretch: undo that survives a restart | Menu option 7 · AC17 |
+| Exit ticket reflection | [DESIGN.md](DESIGN.md#reflection-exit-ticket) |
+
+## How it works
+
+Each file has one job: only `cli.py` talks to the user and only `storage.py`
+touches the disk, so the logic can be tested without the menu.
+
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "arial", "lineColor": "#1464A5", "primaryTextColor": "#072146"}}}%%
+flowchart TD
+    U([User]) -->|chooses a menu option| CLI["cli.py<br/>menu, input and print"]
+    CLI -->|checks each answer while typing| VAL["validation.py<br/>rules and categories"]
+    CLI -->|add, list, report, import, undo| SRV["services.py<br/>Budget class"]
+    SRV -->|creates| MOD["models.py<br/>Transaction class"]
+    MOD -->|validates every field| VAL
+    SRV -->|load, and save after every change| STO["storage.py<br/>CSV and JSON files"]
+    STO -->|reads and writes| DATA[("data/transactions.csv")]
+    STO -->|reads and writes| LIM[("data/limits.json")]
+    STO -.->|import only reads| SAMPLE[("data/sample_transactions.csv")]
+    TEST["tests/test_core.py"] -.->|tests directly, without the menu| SRV
+
+    classDef user fill:#2DCCCD,stroke:#072146,color:#072146
+    classDef cli fill:#072146,stroke:#072146,color:#FFFFFF
+    classDef logic fill:#004481,stroke:#072146,color:#FFFFFF
+    classDef storage fill:#1973B8,stroke:#072146,color:#FFFFFF
+    classDef data fill:#D4EDFC,stroke:#1464A5,color:#072146
+    classDef test fill:#FFFFFF,stroke:#1973B8,color:#072146,stroke-dasharray:4 3
+    class U user
+    class CLI cli
+    class SRV,MOD,VAL logic
+    class STO storage
+    class DATA,LIM,SAMPLE data
+    class TEST test
+```
+
+> [!IMPORTANT]
+> **Key design decision:** the program never saves over the file it imports
+> from. The sample file is only read (dashed arrow), because saving keeps only
+> the valid rows and would silently delete the invalid ones. Every change is
+> saved immediately, so undo still works after closing and reopening.
+> Full rationale and a second diagram: [DESIGN.md](DESIGN.md).
 
 ## Setup
 
@@ -120,10 +192,30 @@ When adding a transaction, a wrong answer is explained and asked again:
 uv run python tests/test_core.py
 ```
 
-The 20 tests cover a normal case, boundary cases, malformed rows from the
+Run it from the project folder (the tests open `data/sample_transactions.csv`).
+
+The 22 tests cover a normal case, boundary cases, malformed rows from the
 sample file, the save/load round trip, the report totals, undo after a
-restart, imports (including a folder instead of a file), the T999 id limit,
-monthly reports, and limits (under, exactly at, and over). Each one prints `✔` when it passes.
+restart, imports (a folder instead of a file, the same file twice, a file
+separated by `;`), the T999 id limit, monthly reports, and limits (under,
+exactly at, and over). Each one prints `✔` when it passes.
+
+## Known limitations
+
+- Ids go up to T999, so one file can hold at most 999 transactions. After
+  that, adding or importing shows a clear error and nothing is changed.
+- Transactions can't be edited or deleted one by one; only the last one
+  added can be undone (undo can be repeated).
+- Currencies are not converted, so there is one report per currency.
+- Limits are monthly and only in EUR, and the same `data/limits.json` is used for
+  every transactions file.
+- Undo only removes transactions; limit changes are not undone (a limit is
+  changed or removed from its own menu option).
+- Categories are written in the code; adding one means editing validation.py.
+- The whole file is rewritten on every change. That's fine for a personal
+  budget, but it would be slow with very large files.
+- Dates in the future are accepted (useful for planned payments, but a typo
+  like 2062 instead of 2026 is not detected).
 
 ## Transaction schema
 
@@ -159,7 +251,8 @@ same rules as a transaction amount. Limits are monthly and in EUR.
 ## Acceptance criteria
 
 Each rule is a behavior that can be checked with a concrete input.
-All of them are checked in `tests/test_core.py`.
+AC1 to AC31 (except AC27) are checked in `tests/test_core.py`; AC27 is checked by running
+the command shown.
 
 | # | Input | Expected result |
 |---|---|---|
@@ -169,7 +262,7 @@ All of them are checked in `tests/test_core.py`.
 | AC4 | Amount `-5` | Rejected: `amount must be > 0, got -5` (never made positive) |
 | AC5 | Amount `0.01` / `1000000` | Accepted (the limits are included) |
 | AC6 | Amount `18.555` | Rejected: `amount can have at most 2 decimals` (never rounded) |
-| AC7 | Amount `abc`, `nan`, `inf` | Rejected |
+| AC7 | Amount `abc`, `nan`, `inf`, `1e3`, `1_000` | Rejected: `amount must be a number like 18.50` (`float()` alone would accept the last four) |
 | AC8 | Date `2026-13-40` / `2025-02-29` | Rejected: `date '...' does not exist` |
 | AC9 | Date `2024-02-29` | Accepted (leap year) |
 | AC10 | Category `gym` | Rejected and the valid options are listed (not mapped to "other") |
@@ -187,23 +280,13 @@ All of them are checked in `tests/test_core.py`.
 | AC22 | Spent 650.00 with a limit of 650.00 | Not over: `✔ 0.00 left` (the limit itself is allowed) |
 | AC23 | Spent 43.40 with a limit of 40.00 | Over: `✖ over by 3.40` |
 | AC24 | `limits.json` with `"gym": 50` or broken JSON | Bad limits reported, the rest still load, no crash |
-
-## Known limitations
-
-- Ids go up to T999, so one file can hold at most 999 transactions. After
-  that, adding or importing shows a clear error and nothing is changed.
-- Transactions can't be edited or deleted one by one; only the last one
-  added can be undone (undo can be repeated).
-- Currencies are not converted, so there is one report per currency.
-- Limits are monthly and only in EUR, and the same `limits.json` is used for
-  every transactions file in the `data` folder.
-- Undo only removes transactions; limit changes are not undone (a limit is
-  changed or removed from its own menu option).
-- Categories are written in the code; adding one means editing validation.py.
-- The whole file is rewritten on every change. That's fine for a personal
-  budget, but it would be slow with very large files.
-- Dates in the future are accepted (useful for planned payments, but a typo
-  like 2062 instead of 2026 is not detected).
+| AC25 | Import `data` (a folder, not a file) | `file 'data' was not found` (no crash) |
+| AC26 | Add a transaction after T999 | Rejected: `the file is full: ids only go up to T999`; an import that does not fit adds nothing |
+| AC27 | `uv run budget --file data/sample_transactions.csv` | Refused: the sample file is only for importing, so its invalid rows are never lost |
+| AC28 | Import the sample file twice | The second time adds nothing: each repeated row is reported as `already in your budget, not imported again`, totals do not double |
+| AC29 | Amount `18,50` (decimal comma) | Rejected: `amount must use a dot for decimals and no commas, like 18.50` (never guessed) |
+| AC30 | Month `２０２６-０９` (full-width digits) | Rejected: `month must be YYYY-MM` (only the digits 0 to 9 are accepted) |
+| AC31 | A CSV separated by `;` (Spanish Excel) | One clear error: `has no column(s) id, date, ...`, instead of one error per row |
 
 ---
 
@@ -222,7 +305,6 @@ All of them are checked in `tests/test_core.py`.
 │   ├── services.py               # the Budget class: add, list, filter, report, import, undo
 │   ├── storage.py                # reading and writing the CSV file
 │   ├── cli.py                    # the menu (the only file with input() and print())
-│   └── py.typed                  # marker: the package has type hints
 ├── tests/
 │   └── test_core.py              # tests written with assert
 ├── pyproject.toml                # project settings and the "budget" command
@@ -233,7 +315,9 @@ All of them are checked in `tests/test_core.py`.
 
 ### Features and the tool used
 
-Every function has type hints and a docstring, as contracts (manual 4.1).
+Every function has a docstring and type hints, as contracts (manual 4.1).
+The only exception: parameters that receive a function (`check`, `action`)
+have no type hint, because that needs a tool we did not see in class.
 
 - Transaction -> a class with __init__ that checks every field before
   saving it, so an invalid transaction can never exist (models.py)
@@ -253,16 +337,22 @@ Every function has type hints and a docstring, as contracts (manual 4.1).
 - Choose the data file when starting -> argparse with a --file option (cli.py)
 - Start with "uv run budget" -> [project.scripts] in pyproject.toml
 - Add a transaction -> list.append() and save (services.py)
-- Automatic id (T001, T002...) -> max(default=0) of the existing numbers + 1
+- Automatic id (T001, T002...) -> max() of the existing numbers + 1 (0 when
+  there are none, with a conditional expression)
   and the f-string f"T{number:03d}" (services.py)
 - List transactions -> sorted(key=lambda t: (t.date, t.id)) (services.py)
 - Filter by kind or category -> list comprehension with a condition (services.py)
 - Totals by category -> dictionary built with totals.get(category, 0) + amount (services.py)
+- Percentage of each category -> dictionary comprehension, calculated in
+  services.py so the CLI only shows it (services.py)
 - Total income, total expenses and balance -> sum() over generator
   expressions and round(x, 2) (services.py)
 - Report per currency -> set comprehension to find the currencies used (services.py)
 - Import a CSV file -> load the other file and give each valid row a new id;
   the other file is only read, never written (services.py)
+- A folder or a missing file can't be imported -> Path(path).is_file() (services.py)
+- Never open the sample file as the working file -> comparing two Path
+  objects with == (cli.py)
 - Save to file -> with open(..., "w", newline="") and csv.DictWriter (storage.py)
 - Load from file -> csv.DictReader, enumerate(start=2), pathlib.Path (storage.py)
 - Undo last transaction -> list.pop() and save the whole file again, so the
@@ -286,7 +376,7 @@ All fields are required.
 
 - Required fields -> .strip() and raise ValueError if empty
 - Clean spaces and capitals -> .strip(), .lower(), .upper()
-- Id must look like T001 and can't repeat -> re.fullmatch(r"T\d{3}") and a
+- Id must look like T001 and can't repeat -> re.fullmatch(r"T[0-9]{3}") and a
   set of ids already seen
 - Date must be a real date in YYYY-MM-DD -> re.fullmatch for the format,
   then date.fromisoformat() to reject dates like 2026-13-40
@@ -296,8 +386,17 @@ All fields are required.
   and INCOME_CATEGORIES, checked with "in"
 - Subcategory must belong to its category -> each category holds a list of
   its subcategories, checked with "in"
-- Amount greater than 0, at most 1,000,000, at most 2 decimals -> float()
-  inside try / except, then comparisons
+- Amount is a plain number like 18.50 -> "," in text for a clear message,
+  then re.fullmatch(r"-?[0-9]+(\.[0-9]+)?") before float(), so "1e3",
+  "1_000", "nan" and "inf" are rejected
+- Amount greater than 0, at most 1,000,000, at most 2 decimals -> comparisons,
+  and re.fullmatch with [0-9]{1,2} for the decimals
+- Only the digits 0 to 9 in ids, dates and months -> [0-9] instead of \d,
+  which also accepts digits of other alphabets
+- Importing the same transactions twice does not count them twice -> a set
+  of tuples (date, kind, category, subcategory, amount, currency) and "in"
+- A file separated by ";" gives one clear error -> a list comprehension of
+  the columns missing from the row dictionary
 - Currency must be EUR, USD or GBP -> "in" a set
 - Clear error messages -> raise ValueError(f"amount must be > 0, got {value}")
 - Bad rows don't stop the file from loading -> try / except / else inside the

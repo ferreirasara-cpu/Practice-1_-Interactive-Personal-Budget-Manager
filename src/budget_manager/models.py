@@ -48,7 +48,7 @@ class Transaction:
 
     def __init__(
         self,
-        id: str,
+        transaction_id: str,
         date: str,
         kind: str,
         category: str,
@@ -56,10 +56,13 @@ class Transaction:
         amount: str | float,
         currency: str,
     ) -> None:
+        """Validate every field and store its clean value (raise ValueError if one is wrong)."""
+        # The parameter is called transaction_id, not id, because id is already
+        # the name of a Python built-in function; the attribute is still self.id.
         # Each line validates one field and saves the CLEAN value on the object.
         # If any value is wrong, validate_... raises ValueError and the object
         # is never created.
-        self.id = validate_id(id)
+        self.id = validate_id(transaction_id)
         self.date = validate_date(date)
 
         # The order matters here:

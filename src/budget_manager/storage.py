@@ -21,7 +21,8 @@ What is inside:
 Tools used:
 - with open(...) so the file is always closed (manual 7.1).
 - csv.DictReader / csv.DictWriter with newline="" (manual 7.3).
-- pathlib.Path for paths, .exists() and .mkdir() (manual 7.2).
+- pathlib.Path for paths, .exists() and .mkdir(exist_ok=True) (manual 7.2).
+  .parent (the folder of a file) is not in the manual (see AI_DISCLOSURE.md).
 - try / except / else inside the loop: the validation loop pattern (manual 7.5).
 - enumerate(..., start=2) for spreadsheet-style row numbers (manual 6.2).
 - A set to detect repeated ids (manual 5.4).
@@ -33,6 +34,8 @@ Tools used:
 Rules followed:
 - If the file does not exist yet, the program starts with an empty list.
 - Duplicate ids are rejected: the first one is kept, the next ones are reported.
+- A file without the 7 columns (for example separated by ";") raises ONE
+  ValueError for the whole file, instead of one error per row.
 - save_transactions only writes valid transactions. Invalid rows are not
   saved, so it must never be used on the sample file, or its invalid rows
   would be lost. The program saves to data/transactions.csv instead.
@@ -76,6 +79,18 @@ def load_transactions(path: str | Path) -> tuple[list[Transaction], list[str]]:
         # enumerate(..., start=2): row 1 is the header,
         # so the first data row is row 2, like in Excel.
         for row_number, row in enumerate(reader, start=2):
+            # The whole file is wrong if a column is missing, for example a CSV
+            # exported from Spanish Excel, which uses ";" instead of ",". Then
+            # every row would say "id is required", which does not help, so we
+            # stop with ONE clear message instead (list comprehension, manual 6.1;
+            # "in" on a dictionary checks its keys, manual 5.5).
+            missing = [field for field in FIELDS if field not in row]
+            if missing:
+                raise ValueError(
+                    f"file '{path}' has no column(s) {', '.join(missing)}. "
+                    f"The first line must be: {','.join(FIELDS)} (separated by commas)"
+                )
+
             try:
                 # from_dict validates every field (see models.py).
                 # If something is wrong, it raises ValueError.
@@ -106,9 +121,9 @@ def save_transactions(path: str | Path, transactions: list[Transaction]) -> None
     path = Path(path)
 
     # Creates the folder (for example "data/") if it does not exist yet.
-    # parents=True creates any missing parent folders,
-    # exist_ok=True means "no error if it already exists".
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # path.parent is the folder that contains the file;
+    # exist_ok=True means "no error if it already exists" (manual 7.2).
+    path.parent.mkdir(exist_ok=True)
 
     # "w" mode erases the old file and writes it again from zero.
     # We always write ALL the transactions, so the file is a full copy
@@ -147,13 +162,13 @@ def load_limits(path: str | Path) -> tuple[dict[str, float], list[str]]:
         except ValueError:
             # A broken JSON file (for example, edited by hand with a missing
             # comma) raises an error that is a kind of ValueError.
-            rejected.append(f"{path.name}: the file is not valid JSON")
+            rejected.append(f"{path}: the file is not valid JSON")
             return limits, rejected
 
     # The file must contain a dictionary {category: amount}.
-    # isinstance(x, dict) asks "is x a dictionary?" (types, manual 1.3).
+    # isinstance(x, dict) asks "is x a dictionary?" (manual 11.1).
     if not isinstance(data, dict):
-        rejected.append(f"{path.name}: expected {{category: amount}}")
+        rejected.append(f"{path}: expected {{category: amount}}")
         return limits, rejected
 
     # Each limit is validated with the SAME rules as a transaction:
@@ -163,7 +178,7 @@ def load_limits(path: str | Path) -> tuple[dict[str, float], list[str]]:
             clean_category = validate_limit_category(category)
             clean_amount = validate_amount(amount)
         except ValueError as error:
-            rejected.append(f"{path.name}: '{category}': {error}")
+            rejected.append(f"{path}: '{category}': {error}")
         else:
             limits[clean_category] = clean_amount
 
@@ -173,7 +188,7 @@ def load_limits(path: str | Path) -> tuple[dict[str, float], list[str]]:
 def save_limits(path: str | Path, limits: dict[str, float]) -> None:
     """Write the limits to the JSON file, replacing its content."""
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(exist_ok=True)   # same as in save_transactions
     with open(path, "w", encoding="utf-8") as file:
         # indent=2 writes one limit per line, so the file is easy to read.
         json.dump(limits, file, indent=2)

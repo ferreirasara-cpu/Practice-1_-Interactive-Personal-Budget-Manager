@@ -30,6 +30,7 @@ What is inside:
     - currencies() / months(): the currencies and months used.
     - summary(currency, month): total income, total expenses and balance.
     - totals_by_category(currency, month): expenses added up per category.
+    - category_shares(currency, month): the % of expenses of each category.
     - set_limit(category, amount) / remove_limit(category): monthly limits.
     - limit_status(month): spent vs. limit for each category in that month.
 
@@ -42,7 +43,8 @@ Tools used:
 - sorted() with key=lambda, max(default=...), sum(), round() (manual 6.3).
 - String methods: .startswith() to match a month, slicing [:7] (manual 5.2, 8.1).
 - Dictionary accumulation with .get(key, 0) and dict.pop() (manual 5.5).
-- Default parameters and None as "not given" (manual 4.2).
+- Default parameters, and None as "no filter" (manual 4.2).
+- Conditional expressions (manual 2.1).
 
 Rules followed:
 - Totals are always calculated for ONE currency. Adding euros and dollars
@@ -54,6 +56,8 @@ Rules followed:
   file is saved in that same order, so undo still works after a restart.
 - Importing a file that does not exist raises ValueError with a clear
   message, instead of silently importing 0 transactions.
+- Importing the same transactions twice does not count them twice: a row
+  identical to one already in the budget is reported and not imported.
 - Ids stop at T999: adding or importing past it raises ValueError with a
   clear message, and an import that does not fit adds nothing.
 """
@@ -72,19 +76,20 @@ from budget_manager.validation import validate_amount, validate_limit_category
 # Limits are kept in one currency, so they can be compared with spending.
 LIMITS_CURRENCY = "EUR"
 
+# Where the monthly limits are saved, unless another file is given.
+LIMITS_FILE = "data/limits.json"
+
 
 class Budget:
     """All the transactions and limits of one budget, and what you can do with them."""
 
-    def __init__(self, path: str | Path, limits_path: str | Path | None = None) -> None:
+    def __init__(self, path: str | Path, limits_path: str | Path = LIMITS_FILE) -> None:
+        """Load the transactions (CSV) and the limits (JSON) of one budget."""
         # The CSV file where the transactions are saved.
         self.path = path
 
-        # The JSON file for the limits. If none is given, it goes next to the
-        # CSV file: data/transactions.csv -> data/limits.json
-        # (Path(...).parent is the folder that contains the file, manual 7.2.)
-        if limits_path is None:
-            limits_path = Path(path).parent / "limits.json"
+        # The JSON file for the limits. A default parameter (manual 4.2):
+        # the program uses data/limits.json, the tests pass their own file.
         self.limits_path = limits_path
 
         # Load both files. The _ means "internal": other files use the
@@ -124,15 +129,23 @@ class Budget:
         """Write all transactions to the CSV file. Called after every change."""
         save_transactions(self.path, self._transactions)
 
-    def next_id(self) -> str:
-        """Return the next free id: one more than the biggest id used."""
+    def _biggest_id_number(self) -> int:
+        """Internal helper: the number of the biggest id used, or 0 if there are none."""
         # List comprehension: t.id[1:] takes "T007" -> "007" -> int 7.
         numbers = [int(t.id[1:]) for t in self._transactions]
+        # Conditional expression (manual 2.1): max() of an empty list would
+        # raise ValueError, so an empty budget starts from 0.
+        return max(numbers) if numbers else 0
 
-        # max(..., default=0): if the list is empty, start from 0.
-        # We use max + 1 (not len + 1) so ids never repeat after an undo
-        # or if a row in the middle was removed.
-        next_number = max(numbers, default=0) + 1
+    def _content(self, t: Transaction) -> tuple[str, str, str, str, float, str]:
+        """Internal helper: everything about a transaction except its id, as a tuple."""
+        return (t.date, t.kind, t.category, t.subcategory, t.amount, t.currency)
+
+    def next_id(self) -> str:
+        """Return the next free id: one more than the biggest id used."""
+        # We use the biggest + 1 (not len + 1) so ids never repeat after an
+        # undo or if a row in the middle was removed.
+        next_number = self._biggest_id_number() + 1
 
         # Ids have 3 digits, so T999 is the last one (see README, Known limitations).
         if next_number > 999:
@@ -185,22 +198,40 @@ class Budget:
         # file is a mistake, so we say it clearly instead of "Imported 0".
         # .is_file() is False for a missing path AND for a folder like "data",
         # which open() could not read (it would crash with IsADirectoryError).
+        # Note: .is_file() is not in the course manual (see AI_DISCLOSURE.md).
         if not Path(path).is_file():
             raise ValueError(f"file '{path}' was not found")
 
         # Read the other file. It is never written, only read.
         loaded, rejected = load_transactions(path)
 
+        # Duplicate policy: importing the same file twice must not count every
+        # transaction twice. A row identical to a transaction ALREADY in the
+        # budget (same date, kind, category, subcategory, amount and currency)
+        # is not imported, and it is reported. A tuple is a fixed record, so it
+        # can be stored in a set (manual 5.3, 5.4): "in" then answers instantly.
+        # The set is built BEFORE the loop, so two identical rows inside the
+        # same file (two coffees on the same day) are both imported.
+        existing = {self._content(t) for t in self._transactions}
+        new_rows: list[Transaction] = []
+        for t in loaded:
+            if self._content(t) in existing:
+                rejected.append(
+                    f"id {t.id} ({t.date}, {t.category}, {t.amount:.2f} {t.currency}): "
+                    f"already in your budget, not imported again"
+                )
+            else:
+                new_rows.append(t)
+
         # Check the space BEFORE adding anything, so an import that does not
         # fit adds nothing at all, instead of only half of the file.
-        numbers = [int(t.id[1:]) for t in self._transactions]
-        if max(numbers, default=0) + len(loaded) > 999:
+        if self._biggest_id_number() + len(new_rows) > 999:
             raise ValueError(
-                f"not enough space for {len(loaded)} transaction(s): ids only go up to T999"
+                f"not enough space for {len(new_rows)} transaction(s): ids only go up to T999"
             )
 
         added: list[Transaction] = []
-        for t in loaded:
+        for t in new_rows:
             # Each imported transaction gets a NEW id from this budget,
             # because the ids of the other file could already be used here.
             new = Transaction(
@@ -321,6 +352,17 @@ class Budget:
         # .items() gives (category, total) pairs. We sort them by the total
         # (pair[1]), biggest first (reverse=True), and build a dict again.
         return dict(sorted(totals.items(), key=lambda pair: pair[1], reverse=True))
+
+    def category_shares(self, currency: str = "EUR", month: str | None = None) -> dict[str, float]:
+        """The percentage of all expenses that each category represents (1 decimal)."""
+        totals = self.totals_by_category(currency, month)
+        all_expenses = sum(totals.values())
+        # Dictionary comprehension (manual 6.1), same order as totals (biggest first).
+        # With no expenses the dictionary is empty, so we never divide by 0.
+        return {
+            category: round(total / all_expenses * 100, 1)
+            for category, total in totals.items()
+        }
 
     def limit_status(self, month: str) -> list[dict[str, str | float | bool]]:
         """For each category with a limit: spent, limit, remaining, over or not.

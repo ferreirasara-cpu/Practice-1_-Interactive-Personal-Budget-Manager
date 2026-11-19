@@ -102,9 +102,11 @@ def categories_for(kind: str) -> dict[str, list[str]]:
 def validate_id(value: object) -> str:
     """Return a clean id like 'T001'. Uniqueness is checked by storage/services."""
     text = clean_required(value, "id").upper()
-    # fullmatch: the WHOLE text must match. T = letter T, \d = digit, {3} = 3 times.
-    # The r before the string means "raw", so \d is not read as an escape.
-    if not re.fullmatch(r"T\d{3}", text):
+    # fullmatch: the WHOLE text must match. T = letter T, [0-9] = one digit,
+    # {3} = 3 times. The r before the string means "raw" (manual 8.3).
+    # [0-9] instead of \d: \d also accepts digits of other alphabets,
+    # like "٣" (Arabic) or "３" (full width), found while testing.
+    if not re.fullmatch(r"T[0-9]{3}", text):
         raise ValueError(f"id must look like T001, got '{text}'")
     return text
 
@@ -114,7 +116,7 @@ def validate_date(value: object) -> str:
     text = clean_required(value, "date")
 
     # Check 1, the shape: 4 digits - 2 digits - 2 digits.
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text):
         raise ValueError(f"date must be YYYY-MM-DD, got '{text}'")
 
     # Check 2, the date exists: fromisoformat fails for 2026-13-40 or
@@ -170,25 +172,30 @@ def validate_amount(value: object) -> float:
     """Return a positive amount with at most 2 decimals, up to MAX_AMOUNT."""
     text = clean_required(value, "amount")
 
-    # float("abc") raises ValueError; we replace it with our own message.
-    try:
-        amount = float(text)
-    except ValueError:
-        raise ValueError(f"amount must be a number, got '{text}'")
+    # A Spanish user may type "18,50". We do not change the comma into a dot,
+    # because "1,500" could mean 1.5 or 1500: only the user knows (never
+    # correct ambiguous data). Instead, the message says what to type.
+    if "," in text:
+        raise ValueError(f"amount must use a dot for decimals and no commas, like 18.50, got '{text}'")
 
-    # Written as "not amount > 0" on purpose: float("nan") is "not a number",
-    # and nan <= 0 is False, so "if amount <= 0" would let nan through.
-    # "not nan > 0" is True, so nan is rejected. Found while testing.
-    if not amount > 0:
+    # The shape of a plain number: optional minus, digits, optional decimals.
+    # float() alone is too permissive: it also accepts "1e3", "1_000", "nan",
+    # "inf" and digits of other alphabets. Found while testing (manual 8.3).
+    if not re.fullmatch(r"-?[0-9]+(\.[0-9]+)?", text):
+        raise ValueError(f"amount must be a number like 18.50, got '{text}'")
+
+    # Safe now: the pattern above only lets through text that float() accepts.
+    amount = float(text)
+
+    # Negative amounts are rejected, never made positive (brief, slide 5).
+    if amount <= 0:
         raise ValueError(f"amount must be > 0, got {text}")
 
-    # Also rejects float("inf").
     if amount > MAX_AMOUNT:
         raise ValueError(f"amount must be at most {MAX_AMOUNT}, got {text}")
 
-    # If rounding changes the number, it had more than 2 decimals.
-    # We reject it instead of rounding silently (never correct data).
-    if round(amount, 2) != amount:
+    # At most 2 decimals: rejected instead of rounded (never correct data).
+    if not re.fullmatch(r"-?[0-9]+(\.[0-9]{1,2})?", text):
         raise ValueError(f"amount can have at most 2 decimals, got {text}")
 
     return amount
@@ -222,7 +229,7 @@ def validate_month(value: object) -> str:
     text = clean_required(value, "month")
 
     # Shape: 4 digits, a dash, 2 digits.
-    if not re.fullmatch(r"\d{4}-\d{2}", text):
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}", text):
         raise ValueError(f"month must be YYYY-MM, got '{text}'")
 
     # text[5:] is the part after "YYYY-" (slicing, manual 5.2): "2026-09" -> "09".
