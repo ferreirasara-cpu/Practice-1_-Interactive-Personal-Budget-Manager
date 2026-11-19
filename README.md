@@ -12,8 +12,8 @@ How the files work together and why: see [DESIGN.md](DESIGN.md).
 Requirements: Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone <https://github.com/ferreirasara-cpu/Practice-1_-Interactive-Personal-Budget-Manager>
-cd "Practice 1_Interactive Personal Budget Manager"
+git clone https://github.com/ferreirasara-cpu/Practice-1_-Interactive-Personal-Budget-Manager
+cd Practice-1_-Interactive-Personal-Budget-Manager
 uv sync
 ```
 
@@ -120,9 +120,10 @@ When adding a transaction, a wrong answer is explained and asked again:
 uv run python tests/test_core.py
 ```
 
-The 19 tests cover a normal case, boundary cases, malformed rows from the
+The 20 tests cover a normal case, boundary cases, malformed rows from the
 sample file, the save/load round trip, the report totals, undo after a
-restart, imports, monthly reports, and limits (under, exactly at, and over). Each one prints `✔` when it passes.
+restart, imports (including a folder instead of a file), the T999 id limit,
+monthly reports, and limits (under, exactly at, and over). Each one prints `✔` when it passes.
 
 ## Transaction schema
 
@@ -189,7 +190,8 @@ All of them are checked in `tests/test_core.py`.
 
 ## Known limitations
 
-- Ids go up to T999, so one file can hold at most 999 transactions.
+- Ids go up to T999, so one file can hold at most 999 transactions. After
+  that, adding or importing shows a clear error and nothing is changed.
 - Transactions can't be edited or deleted one by one; only the last one
   added can be undone (undo can be repeated).
 - Currencies are not converted, so there is one report per currency.

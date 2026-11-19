@@ -42,6 +42,7 @@ Rules followed:
 """
 
 import argparse
+from pathlib import Path
 
 from budget_manager.models import Transaction
 from budget_manager.services import Budget
@@ -208,8 +209,13 @@ def add_transaction(budget: Budget) -> None:
     )
 
     # Budget.add creates the Transaction (which checks everything again),
-    # gives it an id, and saves the file.
-    transaction = budget.add(date, kind, category, subcategory, amount, currency)
+    # gives it an id, and saves the file. It can still fail if the file is
+    # full (ids only go up to T999), so we show the reason instead of crashing.
+    try:
+        transaction = budget.add(date, kind, category, subcategory, amount, currency)
+    except ValueError as problem:
+        error(str(problem))
+        return
     print()
     success(f"Saved as {transaction.id}")
     show_table([transaction])
@@ -370,6 +376,9 @@ def undo_last(budget: Budget) -> None:
     answer = input("\n  Remove it? (y/n): ").strip().lower()
     if answer == "y":
         removed = budget.undo()
+        if removed is None:
+            error("Nothing to undo.")
+            return
         success(f"Removed {removed.id}. The file was updated.")
     else:
         print("  Nothing was removed.")
@@ -398,6 +407,14 @@ def main() -> None:
         "--file", default=DATA_FILE, help=f"CSV file to use (default: {DATA_FILE})"
     )
     args = parser.parse_args()
+
+    # Key design decision (DESIGN.md): the sample file is never written.
+    # Working on it would save only its valid rows and silently delete the
+    # invalid ones, so we refuse it. .resolve() gives the full path, so
+    # "data/sample_transactions.csv" and "./data/sample_transactions.csv" match.
+    # parser.error() prints the message and stops the program.
+    if Path(args.file).resolve() == Path(SAMPLE_FILE).resolve():
+        parser.error(f"{SAMPLE_FILE} is only for importing (option 6), use another file")
 
     budget = Budget(args.file)
 

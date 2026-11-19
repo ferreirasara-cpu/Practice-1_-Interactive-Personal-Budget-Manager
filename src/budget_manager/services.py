@@ -54,6 +54,8 @@ Rules followed:
   file is saved in that same order, so undo still works after a restart.
 - Importing a file that does not exist raises ValueError with a clear
   message, instead of silently importing 0 transactions.
+- Ids stop at T999: adding or importing past it raises ValueError with a
+  clear message, and an import that does not fit adds nothing.
 """
 
 from pathlib import Path
@@ -132,8 +134,11 @@ class Budget:
         # or if a row in the middle was removed.
         next_number = max(numbers, default=0) + 1
 
+        # Ids have 3 digits, so T999 is the last one (see README, Known limitations).
+        if next_number > 999:
+            raise ValueError("the file is full: ids only go up to T999")
+
         # :03d writes the number with 3 digits: 7 -> "007".
-        # If we pass T999, validate_id rejects "T1000" with a clear message.
         return f"T{next_number:03d}"
 
     def add(
@@ -178,11 +183,21 @@ class Budget:
         # load_transactions returns empty lists for a missing file (useful when
         # the program starts for the first time), but for an import a missing
         # file is a mistake, so we say it clearly instead of "Imported 0".
-        if not Path(path).exists():
+        # .is_file() is False for a missing path AND for a folder like "data",
+        # which open() could not read (it would crash with IsADirectoryError).
+        if not Path(path).is_file():
             raise ValueError(f"file '{path}' was not found")
 
         # Read the other file. It is never written, only read.
         loaded, rejected = load_transactions(path)
+
+        # Check the space BEFORE adding anything, so an import that does not
+        # fit adds nothing at all, instead of only half of the file.
+        numbers = [int(t.id[1:]) for t in self._transactions]
+        if max(numbers, default=0) + len(loaded) > 999:
+            raise ValueError(
+                f"not enough space for {len(loaded)} transaction(s): ids only go up to T999"
+            )
 
         added: list[Transaction] = []
         for t in loaded:

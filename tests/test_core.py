@@ -62,13 +62,13 @@ TEST_LIMITS = Path("tests/tmp_test_limits.json")
 # Helpers
 # ---------------------------------------------------------------------------
 
-def error_message(action) -> str | None:
-    """Run action (a lambda) and return its ValueError message, or None."""
+def error_message(action) -> str:
+    """Run action (a lambda) and return its ValueError message, failing if it succeeds."""
     try:
         action()
     except ValueError as error:
         return str(error)
-    return None
+    raise AssertionError("action did not raise ValueError")
 
 
 def clean_test_file() -> None:
@@ -125,8 +125,10 @@ def test_amount_boundaries() -> None:
 
     # Values that float() accepts but are not real amounts.
     # This boundary changed the design: "nan" passed the first version.
-    assert error_message(lambda: validate_amount("nan")) is not None
-    assert error_message(lambda: validate_amount("inf")) is not None
+    assert error_message(lambda: validate_amount("nan")) == "amount must be > 0, got nan"
+    assert error_message(lambda: validate_amount("inf")) == (
+        "amount must be at most 1000000, got inf"
+    )
 
     # Not a number and empty.
     assert error_message(lambda: validate_amount("abc")) == "amount must be a number, got 'abc'"
@@ -256,10 +258,13 @@ def test_undo_is_saved_and_survives_restart() -> None:
     # Simulate closing and opening the program: a new Budget reads the file.
     # (Brief: "what happens if the user undoes after a crash and reload?")
     restarted = Budget(TEST_FILE, TEST_LIMITS)
-    assert restarted.last_transaction.id == "T002"
+    last = restarted.last_transaction
+    assert last is not None
+    assert last.id == "T002"
     removed = restarted.undo()
 
     # Undo removes the last added (T002), not the latest date.
+    assert removed is not None
     assert removed.id == "T002"
 
     # Open again: the file must show the undo too.
@@ -311,6 +316,26 @@ def test_import_missing_file() -> None:
     clean_test_file()
     budget = Budget(TEST_FILE, TEST_LIMITS)
     assert error_message(lambda: budget.import_file("nope.csv")) == "file 'nope.csv' was not found"
+    # A folder is not a file: clear message instead of IsADirectoryError.
+    assert error_message(lambda: budget.import_file("data")) == "file 'data' was not found"
+
+
+def test_ids_stop_at_T999() -> None:
+    budget = new_budget()
+    # Boundary: T999 is the last id. Instead of adding 998 transactions, we
+    # add one and change its id to T998 (only in memory, for the test).
+    # The next one gets T999 (accepted), and one more must fail.
+    budget.add("2026-09-01", "expense", "food", "general", "1", "EUR")
+    budget._transactions[0].id = "T998"
+    assert budget.add("2026-09-01", "expense", "food", "general", "1", "EUR").id == "T999"
+
+    assert error_message(
+        lambda: budget.add("2026-09-01", "expense", "food", "general", "1", "EUR")
+    ) == "the file is full: ids only go up to T999"
+    # An import that does not fit adds nothing (not half of the file).
+    assert "not enough space for 6" in error_message(lambda: budget.import_file(SAMPLE_FILE))
+    assert len(budget.transactions) == 2
+    clean_test_file()
 
 
 def test_import_never_changes_sample_file() -> None:
@@ -448,6 +473,7 @@ if __name__ == "__main__":
         test_failed_add_changes_nothing,
         test_transactions_cannot_be_changed_from_outside,
         test_import_missing_file,
+        test_ids_stop_at_T999,
         test_import_never_changes_sample_file,
         test_month_rules,
         test_monthly_report,

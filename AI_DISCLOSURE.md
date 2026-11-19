@@ -36,4 +36,4 @@ When I had no ideas or no tools claude proposed them.
 
 ## How I checked the work
 I read every file, understanding the comments of code i did not try to code myself before and iterating the code asking ai to be adversarial with my own versions and its versions.
-(`uv run python tests/test_core.py`, 19 passing).
+(`uv run python tests/test_core.py`, 20 passing).

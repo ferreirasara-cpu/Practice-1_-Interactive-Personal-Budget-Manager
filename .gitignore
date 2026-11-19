@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+# macOS folder settings
+.DS_Store
+
+# Created by the program and by the tests (personal data, not for GitHub)
+data/transactions.csv
+data/limits.json
+tests/tmp_test_*

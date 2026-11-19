@@ -1,6 +1,5 @@
-"""Personal budget manager: Release 1."""
 """
-budget_manager - Interactive personal budget manager.
+budget_manager - Interactive personal budget manager (Release 1).
 
 The package is split into layers, each in its own file:
 - validation.py: the rules for every field

@@ -1,0 +1,18 @@
+id,date,kind,category,subcategory,amount,currency
+T001,2026-09-01,income,salary,payroll,1500.00,EUR
+T002,2026-09-02,expense,home,rent,650.00,EUR
+T003,2026-09-04,expense,food,supermarket,18.50,EUR
+T004,2026-09-05,expense, Food ,Restaurants,24.90,eur
+T005,2026-09-06,expense,transport,public_transport,-5,EUR
+T006,2026-09-07,expense,food,supermarket,0,EUR
+T007,2026-13-40,expense,leisure,cinema,9.50,EUR
+T008,2026-09-08,expense,gym,general,30.00,EUR
+T009,2026-09-09,expense,food,cinema,12.00,EUR
+T010,2026-09-10,income,food,general,50.00,EUR
+T011,2026-09-11,expense,shopping,clothes,abc,EUR
+T012,2026-09-12,expense,health,pharmacy,12.345,EUR
+T013,2026-09-13,expense,leisure,travel,120.00,JPY
+T003,2026-09-14,expense,food,delivery,15.00,EUR
+T014,2026-09-15,expense,transport,,8.00,EUR
+T015,2026-09-16,income,other_income,bizum,25.00,EUR
+T016,2026-09-18,expense,leisure,sports,35.00,EUR
