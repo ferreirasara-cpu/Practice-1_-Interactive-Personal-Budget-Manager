@@ -1,10 +1,19 @@
 [project]
 name = "budget-manager"
-version = "0.1.0"
-description = "Interactive personal budget manager"
+version = "1.0.0"
+description = "Interactive personal budget manager (command line)"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
 
+# Creates the command "budget", so the program can be started with:
+#   uv run budget
+# "budget_manager.cli:main" means: in the file budget_manager/cli.py, run main().
+[project.scripts]
+budget = "budget_manager.cli:main"
+
+# Makes the src/ layout importable (manual 9.1). Without it,
+# "import budget_manager" fails.
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
