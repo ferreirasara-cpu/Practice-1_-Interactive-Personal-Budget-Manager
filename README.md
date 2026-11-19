@@ -23,9 +23,9 @@ Categories and limits are inspired by the BBVA app ("Mi día a día" and
 
 ## Brief checklist
 
-Where each part of the brief can be found:
+Where each part of the instructions can be found:
 
-| The brief asks for | Where it is |
+| The instructions asks for | Where it is |
 |---|---|
 | Add, list and report transactions | Menu options 1, 2, 3 and 4 · [Example](#example) |
 | Save and load from file | `storage.py`, saved after every change · [DESIGN.md](DESIGN.md) |
@@ -243,7 +243,7 @@ the program can rely on them.
 | amount | float | greater than 0, at most 1,000,000, at most 2 decimals | `18.50` |
 | currency | text | `EUR`, `USD` or `GBP` | `EUR` |
 
-The brief's schema has 6 fields; I added `subcategory` because the BBVA app
+The instructions's schema has 6 fields; I added `subcategory` because the BBVA app
 groups spending in two levels (for example food → supermarket / restaurants),
 which gives a more useful report.
 
