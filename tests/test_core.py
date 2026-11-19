@@ -192,8 +192,8 @@ def test_category_and_subcategory_rules() -> None:
 def test_load_sample_file() -> None:
     accepted, rejected = load_transactions(SAMPLE_FILE)
 
-    # The sample has 17 rows: 6 valid and 11 invalid on purpose.
-    assert len(accepted) == 6
+    # The sample has 18 rows: 7 valid (6 EUR, 1 USD) and 11 invalid on purpose.
+    assert len(accepted) == 7
     assert len(rejected) == 11
 
     # Each rejected message has the row number and the reason.
@@ -241,15 +241,16 @@ def test_report_totals() -> None:
     budget.import_file(SAMPLE_FILE)
     budget.add("2026-09-20", "expense", "food", "delivery", "5", "USD")
 
-    # Calculated by hand from the 6 valid sample rows:
+    # Calculated by hand from the 6 valid EUR sample rows:
     # income   = 1500 + 25 = 1525
     # expenses = 650 + 18.50 + 24.90 + 35 = 728.40
     # balance  = 1525 - 728.40 = 796.60
     assert budget.summary("EUR") == {
         "currency": "EUR", "income": 1525.0, "expenses": 728.4, "balance": 796.6,
     }
-    # The USD expense is reported apart, never added to the euros.
-    assert budget.summary("USD")["expenses"] == 5.0
+    # The USD expenses (45.99 from the sample + 5 added) are reported apart,
+    # never added to the euros: 45.99 + 5 = 50.99
+    assert budget.summary("USD")["expenses"] == 50.99
     assert budget.currencies() == ["EUR", "USD"]
 
     # Biggest category first.
@@ -344,10 +345,10 @@ def test_importing_twice_does_not_count_twice() -> None:
     budget.import_file(SAMPLE_FILE)
     added, rejected = budget.import_file(SAMPLE_FILE)
 
-    # Second import: nothing new, and the 6 repeated rows are reported
+    # Second import: nothing new, and the 7 repeated rows are reported
     # (plus the same 11 invalid rows as the first time).
     assert added == []
-    assert len(rejected) == 11 + 6
+    assert len(rejected) == 11 + 7
     assert "id T001 (2026-09-01, salary, 1500.00 EUR): already in your budget, not imported again" in rejected
     # The totals did not double: still the numbers calculated by hand.
     assert budget.summary("EUR")["expenses"] == 728.4
@@ -382,7 +383,7 @@ def test_ids_stop_at_T999() -> None:
         lambda: budget.add("2026-09-01", "expense", "food", "general", "1", "EUR")
     ) == "the file is full: ids only go up to T999"
     # An import that does not fit adds nothing (not half of the file).
-    assert "not enough space for 6" in error_message(lambda: budget.import_file(SAMPLE_FILE))
+    assert "not enough space for 7" in error_message(lambda: budget.import_file(SAMPLE_FILE))
     assert len(budget.transactions) == 2
     clean_test_file()
 
@@ -432,7 +433,7 @@ def test_monthly_report() -> None:
     assert budget.summary("EUR")["expenses"] == 788.4
 
     assert budget.totals_by_category("EUR", "2026-10") == {"food": 60.0}
-    assert [t.id for t in budget.filter(month="2026-10")] == ["T007"]
+    assert [t.id for t in budget.filter(month="2026-10")] == ["T008"]
     clean_test_file()
 
 

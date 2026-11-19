@@ -33,7 +33,7 @@ Where each part of the brief can be found:
 | Transaction schema with predictable fields | [Transaction schema](#transaction-schema) |
 | Separated layers (CLI, service, storage) | `cli.py`, `services.py`, `storage.py` · [How it works](#how-it-works) |
 | Normal, boundary, malformed and round-trip tests | `tests/test_core.py` · [How to test](#how-to-test) |
-| Sample data with valid and invalid rows | `data/sample_transactions.csv` (6 valid, 11 invalid) |
+| Sample data with valid and invalid rows | `data/sample_transactions.csv` (7 valid in EUR and USD, 11 invalid) |
 | Design rationale | [DESIGN.md](DESIGN.md), first paragraph |
 | AI disclosure | [AI_DISCLOSURE.md](AI_DISCLOSURE.md) |
 | Stretch: undo that survives a restart | Menu option 7 · AC17 |
@@ -110,7 +110,7 @@ uv run budget --file data/other.csv
 ════════════════════════════════════════════════════════════════════════
                         PERSONAL BUDGET MANAGER
 ════════════════════════════════════════════════════════════════════════
-  File: data/transactions.csv   ·   6 transaction(s)
+  File: data/transactions.csv   ·   7 transaction(s)
 ────────────────────────────────────────────────────────────────────────
    [1]  Add a transaction
    [2]  List all transactions
@@ -125,11 +125,11 @@ uv run budget --file data/other.csv
 
 ## Example
 
-Choose 6 and press Enter to import the sample file. Valid rows are added and
+**1. Import the sample file** (option 6, then Enter). Valid rows are added and
 every invalid row is reported with its row number and the reason:
 
 ```
-  ✔ Imported 6 transaction(s)
+  ✔ Imported 7 transaction(s)
   ✖ 11 row(s) rejected:
       Row 6: amount must be > 0, got -5
       Row 7: amount must be > 0, got 0
@@ -138,7 +138,7 @@ every invalid row is reported with its row number and the reason:
       ...
 ```
 
-Choose 2 to list them:
+**2. List them** (option 2):
 
 ```
   ID    DATE        KIND     CATEGORY / SUBCATEGORY               AMOUNT
@@ -149,13 +149,14 @@ Choose 2 to list them:
   T004  2026-09-05  expense  food / restaurants               -24.90 EUR
   T005  2026-09-16  income   other_income / bizum             +25.00 EUR
   T006  2026-09-18  expense  leisure / sports                 -35.00 EUR
+  T007  2026-09-20  expense  shopping / electronics           -45.99 USD
   ──────────────────────────────────────────────────────────────────────
-  6 transaction(s)
+  7 transaction(s)
 ```
 
-Choose 5 to set monthly limits (for example food 40, home 650, leisure 100),
-then 4 for the report of one month. Limits are compared with that month's
-spending:
+**3. Set limits and see the report** (option 5 for food 40, home 650 and
+leisure 100, then option 4 and month `2026-09`). There is one report per
+currency, and the limits are compared with that month's spending:
 
 ```
   2026-09 · EUR
@@ -170,6 +171,16 @@ spending:
   food               43.40  █░░░░░░░░░░░░░░░░░░░   6%
   leisure            35.00  █░░░░░░░░░░░░░░░░░░░   5%
 
+  2026-09 · USD
+  ─────────────
+  Income                0.00
+  Expenses             45.99
+  ──────────────────────────
+  Balance             -45.99
+
+  Expenses by category
+  shopping           45.99  ████████████████████ 100%
+
   Limits for 2026-09 · EUR
   ────────────────────────
   food               43.40 / 40.00  ████████████████████ 108%  ✖ over by 3.40
@@ -179,7 +190,7 @@ spending:
 
 Press Enter instead of a month to see the report for all time.
 
-When adding a transaction, a wrong answer is explained and asked again:
+**4. A wrong answer is explained and asked again** (option 1):
 
 ```
   Date (YYYY-MM-DD): 2026-13-01
@@ -227,7 +238,7 @@ the program can rely on them.
 | id | text | `T` + 3 digits, unique, created by the program | `T001` |
 | date | text | ISO `YYYY-MM-DD`, must be a real date | `2026-09-04` |
 | kind | text | `expense` or `income` | `expense` |
-| category | text | one of the categories of that kind (see below) | `food` |
+| category | text | one of the categories of that kind (below) | `food` |
 | subcategory | text | one of the subcategories of that category | `supermarket` |
 | amount | float | greater than 0, at most 1,000,000, at most 2 decimals | `18.50` |
 | currency | text | `EUR`, `USD` or `GBP` | `EUR` |
@@ -236,23 +247,30 @@ The brief's schema has 6 fields; I added `subcategory` because the BBVA app
 groups spending in two levels (for example food → supermarket / restaurants),
 which gives a more useful report.
 
-Monthly spending limits are stored separately, in `data/limits.json`:
+| Kind | Category | Subcategories |
+|---|---|---|
+| expense | food | supermarket, restaurants, delivery, general |
+| expense | transport | public_transport, fuel, taxi, general |
+| expense | home | rent, utilities, internet, general |
+| expense | leisure | cinema, travel, sports, general |
+| expense | health | pharmacy, doctor, general |
+| expense | shopping | clothes, electronics, general |
+| income | salary | payroll, bonus, general |
+| income | other_income | bizum, refund, general |
 
-```json
-{
-  "food": 300.0,
-  "home": 650.0
-}
-```
-
-A limit can only be set on an expense category, and its amount follows the
-same rules as a transaction amount. Limits are monthly and in EUR.
+Monthly spending limits are saved separately in `data/limits.json`, for
+example `{"food": 300.0, "home": 650.0}`. A limit can only be set on an
+expense category, its amount follows the same rules as a transaction amount,
+and limits are monthly and in EUR.
 
 ## Acceptance criteria
 
 Each rule is a behavior that can be checked with a concrete input.
-AC1 to AC31 (except AC27) are checked in `tests/test_core.py`; AC27 is checked by running
-the command shown.
+AC1 to AC31 (except AC27) are checked in `tests/test_core.py`; AC27 is
+checked by running the command shown.
+
+<details>
+<summary><b>Show the 31 acceptance criteria</b></summary>
 
 | # | Input | Expected result |
 |---|---|---|
@@ -270,7 +288,7 @@ the command shown.
 | AC12 | `food` with subcategory `cinema` | Rejected: the subcategory must belong to the category |
 | AC13 | Currency `JPY` | Rejected: only EUR, USD, GBP |
 | AC14 | The same id twice in a file | First row kept, second reported: `Row N: id T003 is repeated` |
-| AC15 | Importing the sample file | 6 accepted, 11 rejected, each with its row number |
+| AC15 | Importing the sample file | 7 accepted, 11 rejected, each with its row number |
 | AC16 | Import a file that does not exist | `file '...' was not found` (not "Imported 0") |
 | AC17 | Undo, then close and reopen | The removed transaction is still gone |
 | AC18 | Report with EUR and USD | One report per currency, never added together |
@@ -288,11 +306,12 @@ the command shown.
 | AC30 | Month `２０２６-０９` (full-width digits) | Rejected: `month must be YYYY-MM` (only the digits 0 to 9 are accepted) |
 | AC31 | A CSV separated by `;` (Spanish Excel) | One clear error: `has no column(s) id, date, ...`, instead of one error per row |
 
----
+</details>
 
 ## Reference
 
-### Project structure
+<details>
+<summary><b>Project structure</b></summary>
 
 ```
 ├── data/
@@ -303,8 +322,8 @@ the command shown.
 │   ├── models.py                 # the Transaction class
 │   ├── validation.py             # the rules and the category lists
 │   ├── services.py               # the Budget class: add, list, filter, report, import, undo
-│   ├── storage.py                # reading and writing the CSV file
-│   ├── cli.py                    # the menu (the only file with input() and print())
+│   ├── storage.py                # reading and writing the CSV and JSON files
+│   └── cli.py                    # the menu (the only file with input() and print())
 ├── tests/
 │   └── test_core.py              # tests written with assert
 ├── pyproject.toml                # project settings and the "budget" command
@@ -313,7 +332,12 @@ the command shown.
 └── AI_DISCLOSURE.md              # how AI was used
 ```
 
-### Features and the tool used
+</details>
+
+<details>
+<summary><b>Every feature and rule, with the Python tool used</b></summary>
+
+### Features
 
 Every function has a docstring and type hints, as contracts (manual 4.1).
 The only exception: parameters that receive a function (`check`, `action`)
@@ -369,7 +393,7 @@ have no type hint, because that needs a tool we did not see in class.
 - Tables, report and bars -> f-string alignment (:<10, :>14, :,.2f),
   .center() and string repetition ("█" * n) (cli.py)
 
-### Rules and the tool used
+### Rules
 
 Each transaction has: id, date, kind, category, subcategory, amount, currency.
 All fields are required.
@@ -411,16 +435,5 @@ All fields are required.
 - A bad limits file never crashes the program -> try / except ValueError
   around json.load, and isinstance(data, dict)
 
-### Categories
 
-Expenses
-- food: supermarket, restaurants, delivery, general
-- transport: public_transport, fuel, taxi, general
-- home: rent, utilities, internet, general
-- leisure: cinema, travel, sports, general
-- health: pharmacy, doctor, general
-- shopping: clothes, electronics, general
-
-Income
-- salary: payroll, bonus, general
-- other_income: bizum, refund, general
+</details>

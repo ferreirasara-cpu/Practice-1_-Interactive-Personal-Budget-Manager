@@ -16,3 +16,4 @@ T003,2026-09-14,expense,food,delivery,15.00,EUR
 T014,2026-09-15,expense,transport,,8.00,EUR
 T015,2026-09-16,income,other_income,bizum,25.00,EUR
 T016,2026-09-18,expense,leisure,sports,35.00,EUR
+T017,2026-09-20,expense,shopping,electronics,45.99,USD

@@ -52,11 +52,7 @@ followed it:
    colors, colored diagrams and the checklist table. This goes beyond the
    course on purpose; it is presentation, not code.
 7. **Professor review:** I asked it to attack the program "like a professor
-   would" and fix every problem with course content only. It stopped
-   double imports from counting twice, made amounts follow the pattern
-   `18.50`, and added a clear error for files separated by `;`, with tests for
-   each fix (22 in total).
-
+   would" and fix every problem with course content only. 
 ## Ideas that came from the AI, and why I kept them
 
 - **`date.fromisoformat()`** to check that a date exists. It is not in the
