@@ -31,7 +31,7 @@ flowchart TD
     SRV -->|load and save after every change| STO["storage.py<br/>csv reader and writer"]
     STO -->|reads and writes| DATA[("data/transactions.csv")]
     STO -.->|import only reads| SAMPLE[("data/sample_transactions.csv")]
-    STO -->|reads and writes| LIM[("data/limits.json")]
+    STO -->|reads and writes| LIM[("data/limits.csv")]
     TEST["tests/test_core.py"] -.->|tests directly, without the menu| SRV
     TEST -.-> STO
     TEST -.-> VAL
@@ -94,9 +94,10 @@ sequenceDiagram
 - **Limits are monthly and compared with one month only.** A budget starts
   again every month, so comparing a monthly limit with all-time spending
   would always look "over". Exactly at the limit counts as within it.
-- **Limits are saved as JSON, transactions as CSV.** Transactions are a flat
-  table of records (CSV), while limits are a small dictionary of settings
-  (JSON), as the manual recommends for each format.
+- **Only CSV files, no database.** Transactions and limits are both saved
+  as CSV files (`category,limit` for the limits), as the course asked. Both
+  are read with the same pattern, so a bad limit is reported with its row
+  number, just like a bad transaction.
 
 ## Reflection (exit ticket)
 
@@ -113,7 +114,7 @@ sequenceDiagram
   number (`re.fullmatch`), and a decimal comma like `18,50` gets its own
   message instead of being guessed.
 - **What would I refactor next?** Categories are written in the code, so
-  adding one means editing `validation.py`. I would load them from a JSON
+  adding one means editing `validation.py`. I would load them from a CSV
   file, like the limits already are, so they can change without touching the
   code. I would also add recurring transactions, such as rent, as a
   `RecurringTransaction` subclass of `Transaction` (inheritance, manual 11.1),

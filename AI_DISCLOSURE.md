@@ -66,8 +66,8 @@ followed it:
   in the filters such as "expence".
 - **A copy of the list from `Budget.transactions`**, so other files cannot
   change it without saving.
-- **Limits saved as JSON** (settings) instead of CSV (records), with "exactly
-  at the limit" counting as within it.
+- **"Exactly at the limit" counts as within it**, so a limit of 650 with
+  650 spent is not shown as over.
 
 ## Tools outside the course manual
 

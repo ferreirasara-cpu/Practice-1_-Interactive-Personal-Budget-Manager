@@ -12,7 +12,7 @@ What is inside:
 - Budget: a class that contains a list of Transaction objects and a
   dictionary of limits (composition, manual 10.4). It is created with the
   path of its CSV file and:
-    - loads the transactions (CSV) and the limits (JSON) when it starts.
+    - loads the transactions and the limits (two CSV files) when it starts.
     - saves after EVERY change (add, import, undo, set or remove a limit),
       so the files on disk always match what the program shows.
   Properties (read-only, manual 10.3):
@@ -77,19 +77,19 @@ from budget_manager.validation import validate_amount, validate_limit_category
 LIMITS_CURRENCY = "EUR"
 
 # Where the monthly limits are saved, unless another file is given.
-LIMITS_FILE = "data/limits.json"
+LIMITS_FILE = "data/limits.csv"
 
 
 class Budget:
     """All the transactions and limits of one budget, and what you can do with them."""
 
     def __init__(self, path: str | Path, limits_path: str | Path = LIMITS_FILE) -> None:
-        """Load the transactions (CSV) and the limits (JSON) of one budget."""
+        """Load the transactions and the limits (two CSV files) of one budget."""
         # The CSV file where the transactions are saved.
         self.path = path
 
-        # The JSON file for the limits. A default parameter (manual 4.2):
-        # the program uses data/limits.json, the tests pass their own file.
+        # The CSV file for the limits. A default parameter (manual 4.2):
+        # the program uses data/limits.csv, the tests pass their own file.
         self.limits_path = limits_path
 
         # Load both files. The _ means "internal": other files use the
@@ -246,7 +246,7 @@ class Budget:
         return added, rejected
 
     # ------------------------------------------------------------------
-    # Monthly limits (saved to the JSON file immediately)
+    # Monthly limits (saved to the limits CSV file immediately)
     # ------------------------------------------------------------------
 
     def set_limit(self, category: str, amount: str | float) -> tuple[str, float]:

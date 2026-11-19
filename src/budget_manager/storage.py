@@ -1,5 +1,5 @@
 """
-storage.py - Reading and writing the files (CSV for transactions, JSON for limits).
+storage.py - Reading and writing the CSV files (transactions and limits).
 
 This file is the only place that touches the disk. It does not ask the user
 anything and does not print anything: it loads rows, turns them into
@@ -14,9 +14,9 @@ What is inside:
   One bad row never stops the rest of the file from loading.
 - save_transactions(path, transactions): writes all transactions to the CSV,
   replacing the old content, so the file always matches the program.
-- load_limits(path): reads the monthly spending limits from a JSON file and
+- load_limits(path): reads the monthly spending limits from a CSV file and
   returns (limits, rejected), validated like the transactions.
-- save_limits(path, limits): writes the limits to the JSON file.
+- save_limits(path, limits): writes the limits to the CSV file.
 
 Tools used:
 - with open(...) so the file is always closed (manual 7.1).
@@ -27,9 +27,8 @@ Tools used:
 - enumerate(..., start=2) for spreadsheet-style row numbers (manual 6.2).
 - A set to detect repeated ids (manual 5.4).
 - Returning two values as a tuple (manual 5.3).
-- json.load / json.dump for the limits (manual 7.4). JSON is used because
-  the limits are a dictionary of settings, not a table of records
-  (manual 7.4: "CSV: flat tables... JSON: nested data, settings").
+- Only CSV files, as the course asked: transactions and limits are both
+  flat tables (manual 7.3).
 
 Rules followed:
 - If the file does not exist yet, the program starts with an empty list.
@@ -42,11 +41,13 @@ Rules followed:
 """
 
 import csv
-import json
 from pathlib import Path
 
 from budget_manager.models import FIELDS, Transaction
 from budget_manager.validation import validate_amount, validate_limit_category
+
+# The 2 columns of the limits file, in order (like FIELDS for transactions).
+LIMIT_FIELDS: list[str] = ["category", "limit"]
 
 
 def load_transactions(path: str | Path) -> tuple[list[Transaction], list[str]]:
@@ -143,9 +144,12 @@ def save_transactions(path: str | Path, transactions: list[Transaction]) -> None
 
 
 def load_limits(path: str | Path) -> tuple[dict[str, float], list[str]]:
-    """Read the limits JSON file and return (valid limits, rejected messages).
+    """Read the limits CSV file and return (valid limits, rejected messages).
 
-    The file looks like: {"food": 300.0, "home": 650.0}
+    The file looks like:
+        category,limit
+        food,300.00
+        home,650.00
     """
     path = Path(path)
     limits: dict[str, float] = {}
@@ -155,40 +159,41 @@ def load_limits(path: str | Path) -> tuple[dict[str, float], list[str]]:
     if not path.exists():
         return limits, rejected
 
-    with open(path, encoding="utf-8") as file:
-        try:
-            # json.load turns the text of the file into Python objects (manual 7.4).
-            data = json.load(file)
-        except ValueError:
-            # A broken JSON file (for example, edited by hand with a missing
-            # comma) raises an error that is a kind of ValueError.
-            rejected.append(f"{path}: the file is not valid JSON")
-            return limits, rejected
+    # Same pattern as load_transactions: DictReader, row numbers, and
+    # try / except / else so one bad limit never stops the others (manual 7.5).
+    with open(path, newline="", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        for row_number, row in enumerate(reader, start=2):
+            # A file without the 2 columns (for example edited by hand with
+            # ";") is reported once, and the program still starts.
+            missing = [field for field in LIMIT_FIELDS if field not in row]
+            if missing:
+                rejected.append(f"{path}: the first line must be: {','.join(LIMIT_FIELDS)}")
+                return limits, rejected
 
-    # The file must contain a dictionary {category: amount}.
-    # isinstance(x, dict) asks "is x a dictionary?" (manual 11.1).
-    if not isinstance(data, dict):
-        rejected.append(f"{path}: expected {{category: amount}}")
-        return limits, rejected
-
-    # Each limit is validated with the SAME rules as a transaction:
-    # an existing expense category and a valid amount.
-    for category, amount in data.items():
-        try:
-            clean_category = validate_limit_category(category)
-            clean_amount = validate_amount(amount)
-        except ValueError as error:
-            rejected.append(f"{path}: '{category}': {error}")
-        else:
-            limits[clean_category] = clean_amount
+            # Each limit is validated with the SAME rules as a transaction:
+            # an existing expense category and a valid amount.
+            try:
+                category = validate_limit_category(row.get("category", ""))
+                amount = validate_amount(row.get("limit", ""))
+                # One limit per category: the first is kept, like repeated ids.
+                if category in limits:
+                    raise ValueError(f"category {category} is repeated")
+            except ValueError as error:
+                rejected.append(f"{path}: Row {row_number}: {error}")
+            else:
+                limits[category] = amount
 
     return limits, rejected
 
 
 def save_limits(path: str | Path, limits: dict[str, float]) -> None:
-    """Write the limits to the JSON file, replacing its content."""
+    """Write the limits to the CSV file, replacing its content."""
     path = Path(path)
     path.parent.mkdir(exist_ok=True)   # same as in save_transactions
-    with open(path, "w", encoding="utf-8") as file:
-        # indent=2 writes one limit per line, so the file is easy to read.
-        json.dump(limits, file, indent=2)
+    with open(path, "w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=LIMIT_FIELDS)
+        writer.writeheader()
+        # .items() gives (category, amount) pairs (manual 5.5).
+        for category, amount in limits.items():
+            writer.writerow({"category": category, "limit": f"{amount:.2f}"})

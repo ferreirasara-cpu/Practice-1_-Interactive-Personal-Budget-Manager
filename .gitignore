@@ -14,5 +14,5 @@ wheels/
 
 # Created by the program and by the tests (personal data, not for GitHub)
 data/transactions.csv
-data/limits.json
+data/limits.csv
 tests/tmp_test_*

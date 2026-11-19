@@ -52,9 +52,9 @@ flowchart TD
     CLI -->|add, list, report, import, undo| SRV["services.py<br/>Budget class"]
     SRV -->|creates| MOD["models.py<br/>Transaction class"]
     MOD -->|validates every field| VAL
-    SRV -->|load, and save after every change| STO["storage.py<br/>CSV and JSON files"]
+    SRV -->|load, and save after every change| STO["storage.py<br/>CSV files"]
     STO -->|reads and writes| DATA[("data/transactions.csv")]
-    STO -->|reads and writes| LIM[("data/limits.json")]
+    STO -->|reads and writes| LIM[("data/limits.csv")]
     STO -.->|import only reads| SAMPLE[("data/sample_transactions.csv")]
     TEST["tests/test_core.py"] -.->|tests directly, without the menu| SRV
 
@@ -218,7 +218,7 @@ exactly at, and over). Each one prints `✔` when it passes.
 - Transactions can't be edited or deleted one by one; only the last one
   added can be undone (undo can be repeated).
 - Currencies are not converted, so there is one report per currency.
-- Limits are monthly and only in EUR, and the same `data/limits.json` is used for
+- Limits are monthly and only in EUR, and the same `data/limits.csv` is used for
   every transactions file.
 - Undo only removes transactions; limit changes are not undone (a limit is
   changed or removed from its own menu option).
@@ -258,8 +258,9 @@ which gives a more useful report.
 | income | salary | payroll, bonus, general |
 | income | other_income | bizum, refund, general |
 
-Monthly spending limits are saved separately in `data/limits.json`, for
-example `{"food": 300.0, "home": 650.0}`. A limit can only be set on an
+Monthly spending limits are saved separately in `data/limits.csv`, with
+the columns `category,limit` (for example `food,300.00`). The program only
+uses CSV files, no database. A limit can only be set on an
 expense category, its amount follows the same rules as a transaction amount,
 and limits are monthly and in EUR.
 
@@ -297,7 +298,7 @@ checked by running the command shown.
 | AC21 | Limit on `salary` (income) | Rejected: limits are only for expense categories |
 | AC22 | Spent 650.00 with a limit of 650.00 | Not over: `✔ 0.00 left` (the limit itself is allowed) |
 | AC23 | Spent 43.40 with a limit of 40.00 | Over: `✖ over by 3.40` |
-| AC24 | `limits.json` with `"gym": 50` or broken JSON | Bad limits reported, the rest still load, no crash |
+| AC24 | `limits.csv` with `gym,50`, a repeated category, or a wrong first line | Bad limits reported with their row number, the rest still load, no crash |
 | AC25 | Import `data` (a folder, not a file) | `file 'data' was not found` (no crash) |
 | AC26 | Add a transaction after T999 | Rejected: `the file is full: ids only go up to T999`; an import that does not fit adds nothing |
 | AC27 | `uv run budget --file data/sample_transactions.csv` | Refused: the sample file is only for importing, so its invalid rows are never lost |
@@ -317,12 +318,12 @@ checked by running the command shown.
 ├── data/
 │   ├── sample_transactions.csv   # sample data with valid and invalid rows
 │   ├── transactions.csv          # created by the program (not on GitHub)
-│   └── limits.json               # created by the program (not on GitHub)
+│   └── limits.csv                # created by the program (not on GitHub)
 ├── src/budget_manager/
 │   ├── models.py                 # the Transaction class
 │   ├── validation.py             # the rules and the category lists
 │   ├── services.py               # the Budget class: add, list, filter, report, import, undo
-│   ├── storage.py                # reading and writing the CSV and JSON files
+│   ├── storage.py                # reading and writing the CSV files
 │   └── cli.py                    # the menu (the only file with input() and print())
 ├── tests/
 │   └── test_core.py              # tests written with assert
@@ -385,8 +386,8 @@ have no type hint, because that needs a tool we did not see in class.
   t.date[:7] to list the months used (services.py)
 - One rule for "this currency and this month" -> a private helper method
   _select() used by every query (services.py)
-- Monthly limits saved as settings -> json.dump / json.load in
-  data/limits.json (storage.py)
+- Monthly limits saved to a second CSV file -> csv.DictReader /
+  csv.DictWriter with the columns category,limit in data/limits.csv (storage.py)
 - Set or remove a limit -> dictionary assignment and dict.pop() (services.py)
 - Spent vs. limit -> a list of dictionaries, one per category, sorted by
   percentage used (services.py)
@@ -432,8 +433,9 @@ All fields are required.
   slicing text[5:] with int()
 - A limit only for expense categories -> reuses validate_category("expense", ...)
 - A limit amount -> reuses validate_amount, so the same rules apply
-- A bad limits file never crashes the program -> try / except ValueError
-  around json.load, and isinstance(data, dict)
+- A bad limits file never crashes the program -> try / except / else per
+  row with its row number, a set check for repeated categories, and one
+  message if the first line is wrong
 
 
 </details>

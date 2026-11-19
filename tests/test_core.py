@@ -24,7 +24,7 @@ persistence round-trips):
 6. Undo (stretch challenge): saved to the file and survives a restart.
 7. Import: a missing file gives a clear error, the sample file never changes.
 8. Monthly report: totals for one month only.
-9. Monthly limits: under, exactly at, and over the limit; saved to JSON;
+9. Monthly limits: under, exactly at, and over the limit; saved to CSV;
    invalid limits rejected.
 
 Tools used:
@@ -55,7 +55,7 @@ SAMPLE_FILE = Path("data/sample_transactions.csv")
 # A temporary file only for the tests. It is emptied before and after each
 # test, so tests never touch the real data/transactions.csv.
 TEST_FILE = Path("tests/tmp_test_transactions.csv")
-TEST_LIMITS = Path("tests/tmp_test_limits.json")
+TEST_LIMITS = Path("tests/tmp_test_limits.csv")
 
 # A file that is never created, to check what happens the first time.
 MISSING_FILE = Path("tests/this_file_is_never_created.csv")
@@ -473,7 +473,7 @@ def test_limits_are_saved_and_validated() -> None:
     budget = new_budget()
     budget.set_limit(" Food ", "300")
 
-    # Saved to JSON and loaded again after a restart.
+    # Saved to the CSV file and loaded again after a restart.
     restarted = Budget(TEST_FILE, TEST_LIMITS)
     assert restarted.limits == {"food": 300.0}
 
@@ -491,18 +491,23 @@ def test_limits_are_saved_and_validated() -> None:
 
 def test_invalid_limits_file_is_reported() -> None:
     clean_test_file()
-    # A file edited by hand with one good and two bad limits.
-    TEST_LIMITS.write_text('{"food": 300, "gym": 50, "home": -10}', encoding="utf-8")
+    # A file edited by hand: one good limit, three bad ones.
+    TEST_LIMITS.write_text(
+        "category,limit\nfood,300\ngym,50\nhome,-10\nfood,200\n", encoding="utf-8"
+    )
     budget = Budget(TEST_FILE, TEST_LIMITS)
 
+    # The good limit loads; each bad row is reported with its row number.
     assert budget.limits == {"food": 300.0}
-    assert len(budget.rejected) == 2
+    assert len(budget.rejected) == 3
+    assert budget.rejected[1] == f"{TEST_LIMITS}: Row 4: amount must be > 0, got -10"
+    assert budget.rejected[2] == f"{TEST_LIMITS}: Row 5: category food is repeated"
 
-    # A broken JSON file does not crash the program.
-    TEST_LIMITS.write_text('{"food": 300,', encoding="utf-8")
+    # A file with the wrong first line does not crash the program.
+    TEST_LIMITS.write_text("categoria;limite\nfood;300\n", encoding="utf-8")
     budget = Budget(TEST_FILE, TEST_LIMITS)
     assert budget.limits == {}
-    assert "not valid JSON" in budget.rejected[0]
+    assert budget.rejected == [f"{TEST_LIMITS}: the first line must be: category,limit"]
     clean_test_file()
 
 
